@@ -3,6 +3,7 @@ package smac.tna.tdh1710.gomoku_ai;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.os.AsyncTask;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
@@ -28,11 +29,17 @@ public class GomokuActivity extends AppCompatActivity {
     //index = 2 nếu ô đó chứa quân O - quân của người
     //index = 3 nếu ô đó chưa được đánh, nằm trong stack
 
+    private int backupIndex[][] = new int[WIDTH][HEIGHT];
+    //backup index
+
     private ArrayList<XY> history = new ArrayList<>();
     //luu thu tu cac buoc di
 
     private ArrayList<XY> stack = new ArrayList<>();
     //luu danh sach cac nuoc di se duoc xet den
+
+    private ArrayList<XY> backupStack = new ArrayList<>();
+    //backup stack
 
     private boolean endGame = false;
     //game chua ket thuc thi endGame = false
@@ -88,6 +95,7 @@ public class GomokuActivity extends AppCompatActivity {
             }
             boardGame.addView(ln_row, ly_cell_row);
         }
+
         for (int i = 0; i < WIDTH; i++) {
             for (int j = 0; j < WIDTH; j++) {
                 index[i][j] = 0;
@@ -101,25 +109,45 @@ public class GomokuActivity extends AppCompatActivity {
                 });
             }
         }
+        move(7, 7);
     }
 
-    private void move(int x, int y) {
+    private void move(final int x, final int y) {
         if (index[x][y] == 0 || index[x][y] == 3) {
             if (turn) {
-                turnPlayer.setText("Computer Turn");
-                cell[x][y].setImageResource(R.drawable.o);
-                index[x][y] = 2;
-                updateStack(x, y, stack, index);
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        turnPlayer.setText("Computer Turn");
+                        cell[x][y].setImageResource(R.drawable.o);
+                        index[x][y] = 2;
+                    }
+                });
             } else {
-                turnPlayer.setText("Player Turn");
-                cell[x][y].setImageResource(R.drawable.x);
-                index[x][y] = 1;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        turnPlayer.setText("Player Turn");
+                        cell[x][y].setImageResource(R.drawable.x);
+                        index[x][y] = 1;
+                    }
+                });
             }
+            updateStack(x, y, stack, index);
+            //displayStack();
             turn = !turn;
             number_move++;
             XY move_new = new XY(x, y);
             history.add(move_new);
-            checkEndGame(x, y);
+            alertFinish(x, y);
+            if(!turn && !endGame){
+                AsyncTask.execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        bestMove();
+                    }
+                });
+            }
         }
     }
 
@@ -190,19 +218,28 @@ public class GomokuActivity extends AppCompatActivity {
         return false;
     }
 
-    private void checkEndGame(int x, int y) { //nhat dinh ham phai goi sau cau lenh turn = !turn
+    private void alertFinish(int x, int y) { //nhat dinh ham phai goi sau cau lenh turn = !turn
         endGame = checkWin(x, y);
         if (endGame) {
             for (int index = 0; index < 5; index++) {
-                int w = list_win[index].x;
-                int h = list_win[index].y;
+                final int w = list_win[index].x;
+                final int h = list_win[index].y;
                 if (turn) {
-                    cell[w][h].setImageResource(R.drawable.x_win);
-                } else {
-                    cell[w][h].setImageResource(R.drawable.o_win);
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            cell[w][h].setImageResource(R.drawable.x_win);
+                        }
+                    });
+                } else {runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        cell[w][h].setImageResource(R.drawable.o_win);
+                    }
+                });
                 }
             }
-            AlertDialog.Builder builder = new AlertDialog.Builder(context);
+            final AlertDialog.Builder builder = new AlertDialog.Builder(context);
             builder.setTitle("Victory");
             if (turn) {
                 builder.setMessage("Computer win");
@@ -226,9 +263,13 @@ public class GomokuActivity extends AppCompatActivity {
                     init();
                 }
             });
-
-            AlertDialog dialog = builder.create();
-            dialog.show();
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    AlertDialog dialog = builder.create();
+                    dialog.show();
+                }
+            });
         }
     }
 
@@ -251,26 +292,141 @@ public class GomokuActivity extends AppCompatActivity {
         turnPlayer = (TextView) findViewById(R.id.turnPlayer);
     }
 
-    private ArrayList<XY> updateStack(int x, int y, ArrayList<XY> stackT, int[][] indexT) {
-        ArrayList<XY> stackTemp = new ArrayList<XY>(stackT);
+    private int total(int value_temp[][]) {
+        int result = 0;
+        //Quet theo chieu doc
+        for (int i = 0; i < 15; i++) {
+            for (int j = 0; j < 10; j++) {
 
-        for (int i = -2; i < 3; i++) {
-            for (int j = -2; j < 3; j++) {
-                if (indexT[x + i][y + j] == 0) {
-                    stackTemp.add(new XY(x + i, y + j, number_move));
-                    indexT[x + i][y + j] = 3;
+                String a = "";
+                for (int k = 0; k < 6; k++) {
+                    try {
+                        if (value_temp[i][j + k] == 3) {
+                            a += "0";
+                        } else {
+                            a += value_temp[i][j + k];
+                        }
+                    } catch (Exception e) {
+                        break;
+                    }
                 }
+
+                result += evalute(a);
             }
         }
+
+        //Quet theo chieu ngang
+        for (int i = 0; i < 15; i++) {
+            for (int j = 0; j < 10; j++) {
+
+                String a = "";
+                for (int k = 0; k < 6; k++) {
+                    try {
+                        if (value_temp[j + k][i] == 3) {
+                            a += "0";
+                        } else {
+                            a += value_temp[j + k][i];
+                        }
+                    } catch (Exception e) {
+                        break;
+                    }
+                }
+
+                result += evalute(a);
+            }
+        }
+
+        //Quet cheo trai sang phai
+        for (int i = 0; i < 10; i++) {
+            for (int j = 0; j < 10; j++) {
+
+                String a = "";
+                for (int k = 0; k < 6; k++) {
+                    try {
+                        if (value_temp[i + k][j + k] == 3) {
+                            a += "0";
+                        } else {
+                            a += value_temp[i + k][j + k];
+                        }
+                    } catch (Exception e) {
+                        break;
+                    }
+                }
+
+                result += evalute(a);
+            }
+        }
+
+        //Quet cheo phai sang trai
+        for (int i = 5; i < 15; i++) {
+            for (int j = 0; j < 10; j++) {
+
+                String a = "";
+                for (int k = 0; k < 6; k++) {
+                    try {
+                        if (value_temp[i - k][j + k] == 3) {
+                            a += "0";
+                        } else {
+                            a += value_temp[i - k][j + k];
+                        }
+                    } catch (Exception e) {
+                        break;
+                    }
+                }
+
+                result += evalute(a);
+            }
+        }
+
+        return result;
+    }
+
+    private void updateStack(int x, int y, ArrayList<XY> stackTemp, int[][] indexT) {
+
+        for (int i = -2; i < 3; i++) {
+            if (i == 0) {
+                for (int j = -2; j < 3; j++) {
+                    if (y + j >= 0 && y + j < 15) {
+                        if (indexT[x][y + j] == 0) {
+                            stackTemp.add(new XY(x, y + j, number_move));
+                            indexT[x][y + j] = 3;
+                        }
+                    }
+                }
+                continue;
+            }
+            for (int j = -1; j < 2; j++) {
+                if (x + i >= 0 && x + i < 15 && y + i * j >= 0 && y + i * j < 15) {
+                    if (indexT[x + i][y + i * j] == 0) {
+                        stackTemp.add(new XY(x + i, y + i * j, number_move));
+                        indexT[x + i][y + i * j] = 3;
+                    }
+                }
+            }
+        }//them cac o xung quanh (x,y) chua duoc danh o vua danh vao stack
+
         for (int i = 0; i < stackTemp.size(); i++) {
             XY t = stackTemp.get(i);
             if (t.x == x && t.y == y) {
                 stackTemp.remove(i);
                 break;
             }
-        }
+        } //neu o vua danh nam trong stack thi remove o do khoi stack
 
-        return stackTemp;
+    }
+
+    private void displayStack() {
+        for (int i = 0; i < stack.size(); i++) {
+            final XY temp = stack.get(i);
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    cell[temp.x][temp.y].setImageResource(R.drawable.stack);
+                }
+            });
+
+        }
+        ;
     }
 
     //Ham danh gia
@@ -402,76 +558,53 @@ public class GomokuActivity extends AppCompatActivity {
         return 0;
     }
 
-    //Chuyen khoi 6 o sang dang text va tinh diem
-    private int block(int x, int y, int iT, int select, int isCheck) {
-        int result = 0;
-        //x, y toa do diem dinh danh quan
-        //iT
-        //select = 1,2,3,4
-        //isCheck = 1,2 luot di cua may = 1, cua nguoi = 2
-
-        //xet theo hang ngang
-        if (select == 1) {
-            if (x + iT + 5 >= 15) {
-                return 0;
-            } else {
-                String ev_after = "";
-                String ev_before = "";
-                for (int i = 0; i < 6; i++) {
-                    if (i == -iT) {
-                        ev_after += isCheck;
-                        ev_before += "0";
-                    }else{
-
-                    }
-                }
-                result = evalute(ev_after) - evalute(ev_before);
-            }
-        }
-//        String test = "";
-//        for (int i = 0; i < 6; i++) {
-//            if (a[i] == 0) test += '0';
-//            if (a[i] == 1) test += '1';
-//            if (a[i] == 2) test += '2';
-//        }
-//        result = evalute(test);
-        return result;
-    }
 
     private void bestMove() {
-        XY best = new XY();
-        int bestScore = Integer.MAX_VALUE;
-
-        ArrayList<XY> stackTemp = new ArrayList<>(stack);
-        int[][] indexTemp = new int[WIDTH][HEIGHT];
-        for (int i = 0; i < WIDTH; i++) {
-            for (int j = 0; j < HEIGHT; j++) {
-                indexTemp[i][j] = index[i][j];
+        newGame.setClickable(false);
+        for(int a = 0; a < 15; a++){
+            for(int b = 0; b < 15; b++){
+                cell[a][b].setClickable(false);
             }
         }
-        for (XY xy : stack) {
-
+        XY best = new XY();
+        int bestScore = Integer.MIN_VALUE;
+        for (int i = 0; i < stack.size(); i++) {
+            XY step = stack.get(i);
+            int min = Integer.MAX_VALUE;
+            ArrayList<XY> stackTemp = new ArrayList<>(stack);
+            int indexTemp[][] = new int[15][15];
+            copyArray(index, indexTemp);
+            indexTemp[step.x][step.y] = 1;
+            updateStack(step.x, step.y, stackTemp, indexTemp);
+            for (int j = 0; j < stackTemp.size(); j++) {
+                XY step2 = stackTemp.get(j);
+                indexTemp[step2.x][step2.y] = 2;
+                int diem = total(indexTemp);
+                if(min > diem){
+                    min = diem;
+                }
+                indexTemp[step2.x][step2.y] = 3;
+                if(min < bestScore) break;
+            }
+            if(bestScore < min){
+                bestScore = min;
+                best = step;
+            }
+        }
+        move(best.x, best.y);
+        newGame.setClickable(true);
+        for(int a = 0; a < 15; a++){
+            for(int b = 0; b < 15; b++){
+                cell[a][b].setClickable(true);
+            }
         }
     }
 
-    private class XY {
-        int x;
-        int y;
-        int id;
-
-        public XY() {
-        }
-
-        public XY(int a, int b) {
-            x = a;
-            y = b;
-            id = -1;
-        }
-
-        public XY(int a, int b, int c) {
-            x = a;
-            y = b;
-            id = c;
+    private void copyArray(int[][] start, int[][] end) {
+        for (int i = 0; i < 15; i++) {
+            for (int j = 0; j < 15; j++) {
+                end[i][j] = start[i][j];
+            }
         }
     }
 }
