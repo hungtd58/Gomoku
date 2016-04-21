@@ -22,7 +22,8 @@
         android:id="@+id/undoMove"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Undo" />
+        android:text="Undo"
+        android:visibility="invisible"/>
 
     <LinearLayout
         android:id="@+id/boardGame"
